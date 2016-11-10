@@ -1,0 +1,772 @@
+---
+title: "Proj finale"
+author: "TOUZI"
+date: "8 avril 2016"
+output: html_document
+---
+
+## netoyage des données :
+
+```{r}
+train <- read.csv('train.csv',header=T,na.strings=c(""))
+test<-read.csv('test.csv',header=T,na.strings=c(""))
+
+test$Survived <- NA
+combi <- rbind(train, test)
+
+sapply(combi,function(x) sum(is.na(x)))
+summary(combi)
+
+#var à expliqué:
+T=xtabs( ~ Survived, train)
+xout<-as.data.frame.table(T)
+transform(xout, cumFreq = cumsum(Freq), relative = prop.table(Freq))
+pie(table(train$Survived))
+barplot(table(train$Survived),col="#BDE8F4",axisnames = TRUE)
+
+#analyse de données de train:
+train$Survived<-as.factor(train$Survived)
+train$Pclass<-as.factor(train$Pclass)
+
+f<-FAMD(train[,c(1:9)]) #sur 4 dim on a 81.9%
+HCPC(f,conso=0)
+f$eig
+
+FAMD(train[,c(1:9)],axes = c(1:5))
+
+
+
+plot(f,choix="quali",invisible=c("quanti"))
+
+#Valeurs manquates:
+
+#Fare: il nous manque 1 valeur:
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+#arbre complet
+fit.Fare.comp<-rpart(Fare[!is.na(Fare)]~Pclass+SibSp+Parch+Sex,data=combi[!is.na(combi$Fare),],method='anova')
+plotcp(fit.Fare.comp)
+#arbre optimale (qui choisit l err minimal)
+fit.Fare<-prune(fit.Fare.comp,cp=fit.Fare.comp$cptable[which.min(fit.Fare.comp$cptable[,4]),1])
+#representation de l'arbre
+prp(fit.Fare,extra=1)
+#prediction
+combi$Fare[is.na(combi$Fare)]<-predict(fit.Fare,combi[is.na(combi$Fare),])
+sapply(combi,function(x) sum(is.na(x)))
+
+#Embarked:
+fit.Emb.comp<-rpart(Embarked[!is.na(Embarked)]~Pclass+SibSp+Parch+Sex+Fare,data=combi[!is.na(combi$Embarked),],method='class')
+plotcp(fit.Emb.comp)
+#arbre optimale (qui choisit l err minimal)
+fit.Emb<-prune(fit.Emb.comp,cp=fit.Emb.comp$cptable[which.min(fit.Emb.comp$cptable[,4]),1])
+#representation de l'arbre
+prp(fit.Emb,extra=1)
+#prediction
+combi$Embarked[is.na(combi$Embarked)]<-predict(fit.Emb,combi[is.na(combi$Embarked),],type='class')
+sapply(combi,function(x) sum(is.na(x)))
+
+#modification sur Name:
+combi$Title<-sapply(as.character(combi$Name),function(x) strsplit(x,'[.,]')[[1]][2])#Mr,Miss...
+combi$Title<-gsub(' ','',combi$Title)#enlever les espaces
+#selon Age
+#kmeans(aggregate(Age~Title,combi,median)[1:18,2],3)
+combi$TitleAge<-NULL
+combi$TitleAge[combi$Title %in% c("Don","Dona", "Jonkheer", "Mrs","Rev","theCountess")] <- '1'
+combi$TitleAge[combi$Title %in% c("Capt","Col","Dr","Lady","Major","Sir")] <- '2'
+combi$TitleAge[combi$Title %in% c("Master","Miss","Mlle","Mme","Mr","Ms" )] <- '3'
+combi$TitleAge<-as.factor(combi$TitleAge)                     
+summary(combi$TitleAge)
+#selon Fare:
+#kmeans(aggregate(Fare~Title,combi,median)[1:18,2],3)
+combi$TitleFare<-NULL
+combi$TitleFare[combi$Title %in% c("Capt","Dona","Mlle","Mme")] <- '1'
+combi$TitleFare[combi$Title %in% c("Jonkheer", "Miss","Mr","Ms","Rev")] <- '2'
+combi$TitleFare[combi$Title %in% c("Col","Don","Dr","Major","Master","Lady","Mrs","Sir", "theCountess")] <- '3'
+
+#selon le statut social
+combi$Titlestat<-combi$Title
+combi$Titlestat[combi$Title %in% c('Capt', 'Don', 'Major', 'Sir', 'Jonkheer','Col','Dr','Rev')] <- 'Sir'
+combi$Titlestat[combi$Title %in% c('Dona', 'Lady', 'theCountess')] <- 'Lady'
+combi$TitleAge<-as.factor(combi$TitleAge)
+combi$TitleFare<-as.factor(combi$TitleFare)
+combi$Titlestat <- as.factor(combi$Titlestat)
+
+#selon survived:
+summary(as.factor(combi$Title))
+combi$Title1[combi$Title %in% c('Capt', 'Don','Jonkheer','Rev')] <- 'Sur0'
+combi$Title1[combi$Title %in% c('Lady','Mlle','Mme','Ms','Sir','theCountess')] <- 'Sur1'
+combi$Title1[combi$Title %in% c('Mr')] <- 'Sur0+'
+combi$Title1[combi$Title %in% c('Miss','Mrs')] <- 'Sur1+'
+combi$Title1[combi$Title %in% c('Col','Dona','Dr','Major','Master')] <- 'Autre'
+combi$Title1 <- as.factor(combi$Title1)
+
+combi$Title<-as.factor(combi$Title)  
+#modification sur FamilySize
+combi$FSize <- (combi$SibSp + combi$Parch + 1)
+
+combi$FamilySize[combi$FSize %in% c('1')] <- 'solo'
+combi$FamilySize[combi$FSize %in% c('2')] <- 'couple'
+combi$FamilySize[combi$FSize %in% c('3')] <- 'triple'
+combi$FamilySize[combi$FSize %in% c('4','5','6','7','8','11')] <- 'autre'
+combi$FamilySize<-(as.factor(combi$FamilySize))
+
+
+#modification sur FamilySize
+combi$FamilySize1[combi$FSize %in% c('8','11','5','6')] <- 'FamSiz0'
+combi$FamilySize1[combi$FSize %in% c('1','7')] <- 'FamSiz0+'
+combi$FamilySize1[combi$FSize %in% c('2','3')] <- 'FamSizAut'
+combi$FamilySize1[combi$FSize %in% c('4')] <- 'FamSiz1+'
+combi$FamilySize1<-(as.factor(combi$FamilySize1))
+
+
+#les femmeset les enfants d'abord!
+#Ajout des mamans female& avoire des enfants & age>18 & n'est pas Miss
+combi$Mother<-0
+combi$Mother[combi$Sex=='female' & combi$Parch>0 & combi$Age>18 & combi$Title!='Miss']<-1
+combi$Mother<-as.factor(combi$Mother)
+#etre enfant
+combi$Child<-0
+combi$Child[combi$Parch>0 & combi$Age<=18]<-1
+combi$Child<-as.factor(combi$Child)
+
+#FamilyId
+Surname<-sapply(as.character(combi$Name),function(x) strsplit(x,'[.,]')[[1]][1])
+FamilyId<-paste0(combi$FSize,Surname)
+combi$FamilyId<-factor(FamilyId)
+Family<-data.frame(table(FamilyId))#nomsize,freq expl 1Abelseth 2 => 2 abe qui ont 1 size
+MediumFamily<-Family$FamilyId[Family$Freq<5]
+SmallFamily<-Family$FamilyId[Family$Freq<=2]
+FamilyId[FamilyId %in% SmallFamily]<-'Small'
+FamilyId[FamilyId %in% MediumFamily]<-'Medium'
+combi$FamilyId<-factor(FamilyId)
+
+#FamilyID1
+Surname<-sapply(as.character(combi$Name),function(x) strsplit(x,'[.,]')[[1]][1])
+FamilyId1<-paste0(combi$FSize,Surname)
+combi$FamilyId1<-factor(FamilyId1)
+Family1<-data.frame(table(FamilyId1))#nomsize,freq expl 1Abelseth 2 => 2 abe qui ont 1 size
+SmallFamily1<-Family1$FamilyId1[Family1$Freq<=2]
+FamilyId1[FamilyId1 %in% SmallFamily1]<-'Small'
+combi$FamilyId1<-factor(FamilyId1)
+
+
+
+
+#longueur de Title:
+library("stringr")
+combi$len1<-str_length(combi$Name)
+combi$len<-'autre'
+combi$len[combi$len1 %in% 15:28] <- '0+'
+combi$len[combi$len1 %in% c('31')]<-'0+'
+combi$len[combi$len1 %in% 48:51] <- '1+'
+combi$len[combi$len1 %in% c('35','41','44')]<-'1+'
+combi$len1<-NULL
+combi$len<-as.factor(combi$len)
+
+
+#age with randF
+
+library(randomForest)
+set.seed(123)
+fit.Age <- randomForest(Age[!is.na(Age)]~Pclass+Title+FSize+Sex+Embarked+SibSp+Parch, data=combi[!is.na(combi$Age),], importance=TRUE, ntree=2000)
+varImpPlot(fit.Age)
+combi$Age[is.na(combi$Age)]<-predict(fit.Age,combi[is.na(combi$Age),])
+
+
+
+#Extraire pont de Cabine
+combi$pont<-as.factor(sapply(as.character(combi$Cabin), function(x) strsplit(x,NULL)[[1]][1]))
+fit.pont.comp<-rpart(pont[!is.na(pont)]~Pclass+Title+FSize+Sex+Embarked+SibSp+Parch,data=combi[!is.na(combi$pont),],method='class')
+plotcp(fit.pont.comp)
+#arbre optimale (qui choisit l err minimal)
+fit.pont<-prune(fit.pont.comp,cp=fit.pont.comp$cptable[which.min(fit.pont.comp$cptable[,4]),1])
+#representation de l'arbre
+prp(fit.pont,extra=1)
+#prediction
+combi$pont[is.na(combi$pont)]<-predict(fit.pont,combi[is.na(combi$pont),],type='class')
+
+#Extraire position de Cabin:
+combi$CabinNum<-as.numeric(sapply(as.character(combi$Cabin),function(x) strsplit(x,'[A-Z]')[[1]][2]))#num
+#combi$num<-as.numeric(combi$CabinNum)#transformer en numero
+
+num<-combi$CabinNum[!is.na(combi$CabinNum)]#num contient les !na
+Pos<-kmeans(num,3)#séparer en 3 catégories
+combi$CabinPos[!is.na(combi$CabinNum)]<-Pos$cluster#mettre en cabinpos si !na en num les val de kmeans
+combi$CabinPos<-factor(combi$CabinPos)
+levels(combi$CabinPos)<-c('Front','End','Middle')
+#donnés manquantes:
+fit.pos.comp<-rpart(CabinPos[!is.na(CabinPos)]~Pclass+Title+FSize+Sex+Embarked+SibSp+Parch,data=combi[!is.na(combi$CabinPos),],method='class')
+plotcp(fit.pos.comp)
+#arbre optimale (qui choisit l err minimal)
+fit.pos<-prune(fit.pos.comp,cp=fit.pos.comp$cptable[which.min(fit.pos.comp$cptable[,4]),1])
+#representation de l'arbre
+prp(fit.pos,extra=1)
+#prediction
+combi$CabinPos[is.na(combi$CabinPos)]<-predict(fit.pos,combi[is.na(combi$CabinPos),],type='class')
+summary(combi$CabinPos)
+combi$CabinNum<-NULL;#combi$Cabin<-NULL
+
+
+
+
+
+
+#Ticket:
+sapply(combi,function(x) sum(is.na(x)))
+combi$Ticket<-as.character(combi$Ticket)
+
+combi$Ticket<-replace(combi$Ticket,which((combi$Ticket=="")),'0')
+#combi$Ticket[is.na(combi$Ticket)]= "0"
+combi$Ticket[combi$Ticket %in% c('LINE')]<-"0"
+fun<-function(ch)
+{
+  i=str_length(ch)
+  ch1="";ch2="";ch3=""
+  while(i>0 & str_sub(ch,i,i)!=' ')
+  {
+    ch3<-paste(ch3,str_sub(ch,i,i),sep = "")
+    i=i-1
+  }
+  i=i-1
+  if(grepl("/",ch))
+  {
+    
+    while(i>0 & str_sub(ch,i,i)!='/')
+    {
+      ch2<-paste(ch2,str_sub(ch,i,i),sep = "")
+      i=i-1
+    }
+    i=i-1
+  }
+  while(i>0)
+  {
+    ch1<-paste(ch1,str_sub(ch,i,i),sep = "")
+    i=i-1
+  }
+  ch1=paste(rev(strsplit(ch1, split = "")[[1]]), collapse = "") 
+  ch2=paste(rev(strsplit(ch2, split = "")[[1]]), collapse = "") 
+  ch3=paste(rev(strsplit(ch3, split = "")[[1]]), collapse = "") 
+  if(ch2==""){ch2=NA}
+  if(ch1==""){ch1=NA}
+  return(list(ch1,ch2,ch3))
+}
+combi$tick1=combi$tick2=combi$tick3=""
+for(i in 1:1309)
+{
+  combi$tick1[i]<-fun(combi$Ticket[i])[1]
+  combi$tick2[i]<-fun(combi$Ticket[i])[2]
+  combi$tick3[i]<-fun(combi$Ticket[i])[3]
+}
+combi$tick3<-as.numeric(combi$tick3)
+combi$tick1<-as.character(combi$tick1)
+combi$tick2<-as.character(combi$tick2)
+
+#trait sur tick3:
+combi$tick34<-factor(kmeans(combi$tick3,4)$cluster)#mettre en cabinpos si !na en num les val de kmeans
+
+Pos<-kmeans(combi$tick3,3)#séparer en 3 catégories
+combi$tick3<-Pos$cluster#mettre en cabinpos si !na en num les val de kmeans
+combi$tick3<-factor(combi$tick3)
+sapply(combi,function(x) sum(is.na(x)))
+
+
+#trait sur tick2:
+combi$tick2<-gsub(' ','',combi$tick2)
+combi$tick2<-gsub('Paris','PARIS',combi$tick2)
+combi$tick2<-gsub('[:.:]','',combi$tick2)
+combi$tick2<-gsub('AHBasle','AH',combi$tick2)
+combi$tick2<-gsub('AA','A',combi$tick2)
+combi$tick2<-gsub('PP','P',combi$tick2)
+combi$tick2<-gsub('5','A5',combi$tick2)
+combi$tick2<-gsub('4','A4',combi$tick2)
+combi$tick2<-gsub('3','A3',combi$tick2)
+combi$tick2[combi$tick2 %in% c('NA')] <- NA
+
+combi$tick21<-as.factor(combi$tick2)
+#prediction données manquantes:
+fit.tick21.comp<-rpart(tick21[!is.na(tick21)]~Pclass+SibSp+Parch+Sex+Fare,data=combi[!is.na(combi$tick21),],method='class')
+plotcp(fit.tick21.comp)
+#arbre optimale (qui choisit l err minimal)
+fit.tick21<-prune(fit.tick21.comp,cp=fit.tick21.comp$cptable[which.min(fit.tick21.comp$cptable[,4]),1])
+#representation de l'arbre
+prp(fit.tick21,extra=1)
+#prediction
+combi$tick21[is.na(combi$tick21)]<-predict(fit.tick21,combi[is.na(combi$tick21),],type='class')
+
+combi$tick2[combi$tick2 %in% c('A5','A4','A3','AH','A')] <- 'A'
+combi$tick2[combi$tick2 %in% c('W','S','SOTON')] <- 'autre'
+combi$tick2[combi$tick2 %in% c('OQ','O2')] <- 'O'
+combi$tick2<-as.factor(combi$tick2)
+#prediction données manquantes:
+fit.tick2.comp<-rpart(tick2[!is.na(tick2)]~Pclass+SibSp+Parch+Sex+Fare,data=combi[!is.na(combi$tick2),],method='class')
+plotcp(fit.tick2.comp)
+#arbre optimale (qui choisit l err minimal)
+fit.tick2<-prune(fit.tick2.comp,cp=fit.tick2.comp$cptable[which.min(fit.tick2.comp$cptable[,4]),1])
+#representation de l'arbre
+prp(fit.tick2,extra=1)
+#prediction
+combi$tick2[is.na(combi$tick2)]<-predict(fit.tick2,combi[is.na(combi$tick2),],type='class')
+sapply(combi,function(x) sum(is.na(x)))
+
+#tick1:
+
+combi$tick1<-gsub(' ','',combi$tick1)
+combi$tick1<-gsub('[:.:]','',combi$tick1)
+combi$tick1<-gsub('CC','C',combi$tick1)
+combi$tick1<-gsub('STON','SOTON',combi$tick1)
+combi$tick1<-gsub('4','A4',combi$tick1)
+combi$tick1<-gsub('3','A3',combi$tick1)
+combi$tick1<-gsub('AA','A',combi$tick1)
+combi$tick1<-gsub('PP','P',combi$tick1)
+combi$tick11<-combi$tick1
+#prediction données manquantes:
+fit.tick11.comp<-rpart(tick11[!is.na(tick11)]~Pclass+SibSp+Parch+Sex+Fare,data=combi[!is.na(combi$tick11),],method='class')
+plotcp(fit.tick11.comp)
+#arbre optimale (qui choisit l err minimal)
+fit.tick11<-prune(fit.tick11.comp,cp=fit.tick11.comp$cptable[which.min(fit.tick11.comp$cptable[,4]),1])
+#representation de l'arbre
+prp(fit.tick11,extra=1)
+#prediction
+combi$tick11[is.na(combi$tick11)]<-predict(fit.tick11,combi[is.na(combi$tick11),],type='class')
+combi$tick11<-as.factor(combi$tick11)
+
+combi$tick1<-gsub('CC','A5',combi$tick1)
+combi$tick1[combi$tick1 %in% c('A2','A4','A5','AQ','A')] <- 'A'
+combi$tick1[combi$tick1 %in% c('C','CA')] <- 'C'
+combi$tick1[combi$tick1 %in% c('Fa','FC')] <- 'F'
+combi$tick1[combi$tick1 %in% c('LP','WEP','WE','SW','SP','SOP','P','PP')] <- 'autre'
+combi$tick1[combi$tick1 %in% c('SOC','SO','SC','SCO')] <- 'SC'
+combi$tick1[combi$tick1 %in% c('NA')] <- NA
+combi$tick1<-as.factor(combi$tick1)
+#prediction données manquantes:
+fit.tick1.comp<-rpart(tick1[!is.na(tick1)]~Pclass+SibSp+Parch+Sex+Fare,data=combi[!is.na(combi$tick1),],method='class')
+plotcp(fit.tick1.comp)
+#arbre optimale (qui choisit l err minimal)
+fit.tick1<-prune(fit.tick1.comp,cp=fit.tick1.comp$cptable[which.min(fit.tick1.comp$cptable[,4]),1])
+#representation de l'arbre
+prp(fit.tick1,extra=1)
+#prediction
+combi$tick1[is.na(combi$tick1)]<-predict(fit.tick1,combi[is.na(combi$tick1),],type='class')
+sapply(combi,function(x) sum(is.na(x)))
+
+
+combi$Pclass<-as.factor(combi$Pclass)
+combi$Survived<-as.factor(combi$Survived)
+combi$pont<-as.factor(combi$pont)
+combi$CabinPos<-as.factor(combi$CabinPos)
+#combi$Name<-NULL
+#combi$Ticket<-NULL
+#combi$Cabin<-NULL
+
+summary(combi)
+sapply(combi,function(x) sum(is.na(x)))
+
+
+
+train <- combi[1:891,]
+test <- combi[892:1309,]
+test$Survived<-NULL
+
+
+```
+
+Conclusion:
+
+Survived~PassengerId+Pclass+Sex+Age+SibSp+Parch+Fare+Embarked 
+                    +Title+TitleAge+TitleFare+Titlestat+Title1+FSize+FamilySize+FamilySize1
+                    +Mother+Child+FamilyId+FamilyId1+len+pont+CabinPos
+                    +tick3+tick2+tick1+tick34+tick21+tick11
+                    
+Survived~PassengerId+Pclass+Sex+Age+SibSp+Parch+Fare+Embarked 
+                    +TitleAge+TitleFare+Title1+FSize+FamilySize+FamilySize1
+                    +Mother+Child+len+pont+CabinPos
+                    +tick3+tick34
+                    
+                  
+
+##Conditional Random forest:
+
+```{r}
+
+#validation croisé 
+library(party);library(rpart)
+set.seed(123)
+n<-nrow(train)
+K<-9
+taille<-n%/%K
+alea<-runif(n)
+rang<-rank(alea)
+bloc<-(rang-1)%/%taille+1
+bloc<-as.factor(bloc)
+print(summary(bloc))
+all.err<-numeric(0)
+for(j in 1:K)
+{
+  set.seed(123)
+  mod<-cforest(Survived~ PassengerId+Pclass+Age+SibSp+Parch +Fare+ CabinPos+Title+TitleAge+
+                 TitleFare+Title1+FSize+FamilySize1+Mother+Child+FamilyId+ tick1+tick2+tick3+tick11,
+               data = train[bloc!=j,] ,
+               controls=cforest_unbiased(ntree=200, mtry=6))
+  pred<-predict(mod, train[bloc==j,], OOB=TRUE, type = "response")
+  mc<-table(train$Survived[bloc==j],pred)
+  #err<-mc[1,2]+mc[1,2]
+  #all.err<-rbind(all.err,err)
+  err<-1.0-(mc[1,1]+mc[2,2])/sum(mc)
+  all.err<-rbind(all.err,err)
+}
+print(mean(all.err))
+#0.1661055
+#tick21 inutile, tick34 mauvais
+
+#0.1728395, ntree=1500/200=> 0.1717
+#200,5 =>0.171717 , 200,4, 6 =>0.1694 7 =>0.1705
+#prj5 => 0.1795735
+#tout => 0.1649832
+#importants:PassengerID+Pclass+Age+SibSp+Parch+Fare+CabinPos+Title+TitleAge+TitleFare+Title1+FSize
+#+FamilySize1+Mother+Child+FamilyId+tick1+tick2+tick3
+#non import:Sex+FamilySize  #pas d'effet:Embarked+pont+len
+#0.1649-sex=>0.1638608-FamilySize=>0.1627385
+#ntree 50:450(0.1638608),500:900(0.1627385),1000(0.1616162);1150(0.1627385),1500( 0.1649832)
+#mtry:4.35(0.1661055),4.5(0.1661055),5(0.1627),6(0.1672278), 7(0.1717)
+
+#test kaggle
+library(party);library(rpart)
+set.seed(123)
+mod<-cforest(Survived~ PassengerId+Pclass+Age+SibSp+Parch +Fare+ CabinPos+Title+TitleAge+
+                 TitleFare+Title1+FSize+FamilySize1+Mother+Child+FamilyId+ tick1+tick2+tick3+tick11,
+             data = train[bloc!=5,] ,
+             controls=cforest_unbiased(ntree=200, mtry=6))
+Predcfor <- predict(mod, test, OOB=TRUE, type = "response")
+submitcfor <- data.frame(PassengerId = test$PassengerId, Survived = Predcfor)
+write.csv(submitcfor, file = "lastcfor.csv", row.names = FALSE)
+best<-read.csv(file="best.csv")
+table(best$x,Predcfor)
+#result 0.80861 
+#new 0.81340
+#with ticket11: 0.81340 #polynomial 0.80383 éliminer pssengerID et les ployn:  0.80383
+
+#last cforest:
+library(party);library(rpart)
+set.seed(1234)
+
+cfor<-cforest(Survived~ Pclass+Sex+Age+Fare+I(Fare^2)+Embarked
+               +TitleFare+I(TitleFare^2)+Titlestat+Title1+FSize+FamilySize+FamilySize1
+              +Mother+Child +FamilyId1 +pont +CabinPos
+              +tick3+tick2 +tick21,
+             data = train ,
+             controls=cforest_unbiased(ntree=200, mtry=6))
+Predcfor <- predict(cfor, test, OOB=TRUE, type = "response")
+mc1<-table(Predcfor,cor$Survived)
+err1<-1.0-(mc1[1,1]+mc1[2,2])/sum(mc1)
+err1
+
+#0.1435407 kaggle => 0.81818
+submit <- data.frame(PassengerId = test$PassengerId, Survived = Predcfor)
+write.csv(submit, file = "1cfor.csv", row.names = FALSE)# cfor 0.1435
+```
+
+seulement les variables qu'on a utilisé dans le cforest sont les variables significatives dans ce modéle, Kaggle nous a donné une résultat dde 0.81340
+ 
+Polynomial a amelioré l'err de la validation croisé mais non pas le score sur kaggle.
+Survived~ PassengerId+I(PassengerId^2)+Pclass+Age+SibSp+Parch +Fare+I(Fare^2)+ CabinPos+Title+TitleAge+
+                 TitleFare+Title1+I(Title1^2)+FSize+FamilySize1+Mother+Child+FamilyId+ tick1+tick2+tick3+tick11,
+
+## Random forest:
+
+
+```{r}
+#validation croisé 
+library(randomForest)
+n<-nrow(train)
+K<-9
+taille<-n%/%K
+set.seed(123)
+alea<-runif(n)
+rang<-rank(alea)
+bloc<-(rang-1)%/%taille+1
+bloc<-as.factor(bloc)
+print(summary(bloc))
+all.err<-numeric(0)
+for(j in 1:K)
+{
+  set.seed(123)
+  mod<-randomForest(Survived~PassengerId+Pclass+Sex+Age+SibSp+Parch 
+                    +TitleAge+TitleFare 
+                    +Mother+Child+len+pont
+                    +tick3+tick34, data=train[bloc!=j,], importance=TRUE, ntree=500)
+  pred<-predict(mod, train[bloc==j,])
+  mc<-table(train$Survived[bloc==j],pred)
+  err<-1.0-(mc[1,1]+mc[2,2])/sum(mc)
+  all.err<-rbind(all.err,err)
+}
+print(mean(all.err))
+#0.1560045
+#cforest =>0.1717
+
+#Kaggle:
+set.seed(123)
+fit.for <- randomForest(Survived~PassengerId+Pclass+Sex+Age+SibSp+Parch 
+                        +TitleAge+TitleFare 
+                        +Mother+Child+len+pont
+                        +tick3+tick34, data=train, importance=TRUE, ntree=500)
+varImpPlot(fit.for)
+Predfor <- predict(fit.for, test)
+fit.for$importance
+subfor <- data.frame(PassengerId = test$PassengerId, Survived = Predfor)
+write.csv(subfor, file = "lastforest.csv", row.names = FALSE)
+#Resultat kaggle  0.73206 
+```
+
+Conclusion:
+
+Le résultat de la validation croisé est meilleure que celle du conditional forest mais sur kaggle c'était l'inverse.
+
+## Gradient Bosting
+
+```{r}
+#validation croisé
+library(caret)
+library(gbm)
+
+
+n<-nrow(train)
+K<-9
+taille<-n%/%K
+set.seed(123)
+alea<-runif(n)
+rang<-rank(alea)
+bloc<-(rang-1)%/%taille+1
+bloc<-as.factor(bloc)
+print(summary(bloc))
+all.err<-numeric(0)
+for(j in 1:K)
+{
+  set.seed(123)
+  mod<-train(Survived~PassengerId+Pclass+Sex+Age+SibSp+Parch+Fare+Embarked 
+             +TitleAge+TitleFare+Titlestat+Title1+FSize+FamilySize+FamilySize1
+             +Child+len+pont+tick3+tick1+tick34
+             , data=train[bloc!=j,], method="gbm", distribution="bernoulli")
+  pred<-ifelse(predict(mod, train[bloc==j,],type= "prob")[,2] > 0.5,1,0)
+  mc<-table(train$Survived[bloc==j],pred)
+  #err<-mc[1,2]+mc[1,2]
+  #all.err<-rbind(all.err,err)
+  err<-1.0-(mc[1,1]+mc[2,2])/sum(mc)
+  all.err<-rbind(all.err,err)
+}
+print(mean(all.err)) 
+#0.1638608
+
+
+
+
+#Kaggle:
+gb<-train(Survived~PassengerId+Pclass+Sex+Age+SibSp+Parch+Fare+Embarked 
+          +TitleAge+TitleFare+Titlestat+Title1+FSize+FamilySize+FamilySize1
+          +Child+len+pont+tick3+tick1+tick34, data=train, method="gbm", distribution="bernoulli")
+predgb <- predict(gb, test,type= "prob")[,2] 
+predgb <- ifelse(predgb > 0.5,1,0)
+submitgb <- data.frame(PassengerId = test$PassengerId, Survived = predgb)
+write.csv(submitgb, file = "gb.csv", row.names = FALSE)
+#kaggle=>0.79426
+
+```
+
+## simple arbre de décision:
+
+```{r}
+
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+#validation croisé 
+n<-nrow(train)
+K<-9
+taille<-n%/%K
+set.seed(123)
+alea<-runif(n)
+rang<-rank(alea)
+bloc<-(rang-1)%/%taille+1
+bloc<-as.factor(bloc)
+print(summary(bloc))
+all.err<-numeric(0)
+for(j in 1:K)
+{
+  set.seed(123)
+  mod<-rpart(Survived[!is.na(Survived)]~.,data=train[bloc!=j,],method='class')
+  mod<-prune(mod,cp=mod$cptable[which.min(mod$cptable[,4]),1])
+  pred<-predict(mod,train[bloc==j,],type='class')
+  mc<-table(train$Survived[bloc==j],pred)
+  
+  err<-1.0-(mc[1,1]+mc[2,2])/sum(mc)
+  all.err<-rbind(all.err,err)
+}
+print(mean(all.err))
+#0.164983
+
+
+#arbre complet:
+fit.Surv.comp<-rpart(Survived~.,data=train,method='class')
+plotcp(fit.Surv.comp)
+#arbre optimale (qui choisit l err minimal)
+fit.Surv<-prune(fit.Surv.comp,cp=fit.Surv.comp$cptable[which.min(fit.Surv.comp$cptable[,4]),1])
+#representation de l'arbre
+prp(fit.Surv,extra=1)
+predtree<-predict(fit.Surv,test,type='class')
+submit <- data.frame(PassengerId = test$PassengerId, Survived = predtree)
+write.csv(submit, file = "predtree.csv", row.names = FALSE)
+
+
+```
+
+## SVM:
+
+```{r}
+library(e1071)
+#validation croisé 
+n<-nrow(train)
+K<-9
+taille<-n%/%K
+set.seed(123)
+alea<-runif(n)
+rang<-rank(alea)
+bloc<-(rang-1)%/%taille+1
+bloc<-as.factor(bloc)
+print(summary(bloc))
+all.err<-numeric(0)
+for(j in 1:K)
+{set.seed(123)
+
+  mod<-svm(Survived~PassengerId+Pclass+Sex+Age +Fare
+           +Title+FamilySize+FamilyId+FamilyId1+len+pont+CabinPos
+           +tick3+tick2+tick1+tick34,
+           data=train[bloc!=j,],cost=105,gama=0.5)
+  pred<-predict(mod,train[bloc==j,])
+  
+  mc<-table(train$Survived[bloc==j],pred)
+  err<-1.0-(mc[1,1]+mc[2,2])/sum(mc)
+  all.err<-rbind(all.err,err)
+}
+print(mean(all.err))
+#0.1481481 #0.1470258
+
+
+
+
+svm.model=svm(Survived ~PassengerId+Pclass+Sex+Age +Fare
+              +Title+FamilySize+FamilyId+FamilyId1+len+pont+CabinPos
+              +tick3+tick2+tick1+tick34,data=train,cost=105,gama=0.5)
+predsvm=predict(svm.model,test)
+submitne <- data.frame(PassengerId = test$PassengerId, Survived = predsvm)
+write.csv(submitne, file = "lastsvm.csv", row.names = FALSE)
+#kaggle:  0.79426
+
+
+#lastSVM:
+library(e1071)
+set.seed(1234)
+svm=svm(Survived~Sex +Embarked 
+        +Title1+ FamilySize
+        +Mother+Child +FamilyId1 
+        +tick3+tick1+tick34+tick21
+          ,data=train,cost=200,gama=0.5)
+predsvm=predict(svm,test)
+mc3<-table(predsvm,cor$Survived)
+err3<-1.0-(mc3[1,1]+mc3[2,2])/sum(mc3)
+err3 
+#0.1507177 kaggle=>0.80861
+submit <- data.frame(PassengerId = test$PassengerId, Survived = predsvm)
+write.csv(submit, file = "1svm.csv", row.names = FALSE)
+```
+
+## Regression logistique:
+
+```{r}
+
+library(boot)                          
+#validation croisé:
+n<-nrow(train)
+K<-9
+taille<-n%/%K
+set.seed(123)
+alea<-runif(n)
+rang<-rank(alea)
+bloc<-(rang-1)%/%taille+1
+bloc<-as.factor(bloc)
+print(summary(bloc))
+all.err<-numeric(0)
+for(j in 1:K)
+{
+  set.seed(123)
+  mod<- glm(Survived~PassengerId +Sex+Age+SibSp+Parch+Fare+Embarked 
+            +TitleAge+TitleFare+Title1 +FamilySize
+            +Child+len +tick34
+            ,family=binomial(link='logit'),data=train[bloc!=j,])
+  
+  pred<-ifelse(predict(mod,newdata=train[bloc==j,],type='response') > 0.5,1,0)
+  
+  mc<-table(train$Survived[bloc==j],pred)
+  err<-1.0-(mc[1,1]+mc[2,2])/sum(mc)
+  all.err<-rbind(all.err,err)
+}
+print(mean(all.err))
+#0.1705948 err
+  set.seed(1234)
+model.logi <- glm(Survived~PassengerId +Sex+Age+SibSp+Parch+Fare+Embarked 
+                  +TitleAge+TitleFare+Title1 +FamilySize
+                  +Child+len +tick34
+                  ,family=binomial(link='logit'), data=train)
+predlog <- predict(model.logi,newdata=subset(test),type='response')#la prediction
+predlog <- ifelse(predlog > 0.5,1,0)#si >0.5 =>1 sinon 0
+submit <- data.frame(PassengerId = test$PassengerId, Survived = predlog)
+write.csv(submit, file = "predlog.csv", row.names = FALSE)
+
+
+```
+
+## Vote des modéles: 
+
+
+on a essayé de créer un systeme de vote entre les modéles SVM, Cforest et Gradient Boosting vu qu'ils donnent les meilleurs score sur kaggle.
+ 
+ 
+```{r}
+
+#last combin
+
+#lastSVM:
+library(e1071)
+set.seed(1234)
+svm=svm(Survived~Sex +Embarked 
+        +Title1+ FamilySize
+        +Mother+Child +FamilyId1 
+        +tick3+tick1+tick34+tick21
+          ,data=train,cost=200,gama=0.5)
+predsvm=predict(svm,test)
+
+#last cforest:
+library(party);library(rpart)
+set.seed(1234)
+
+cfor<-cforest(Survived~ Pclass+Sex+Age+Fare+I(Fare^2)+Embarked
+               +TitleFare+I(TitleFare^2)+Titlestat+Title1+FSize+FamilySize+FamilySize1
+              +Mother+Child +FamilyId1 +pont +CabinPos
+              +tick3+tick2 +tick21,
+             data = train ,
+             controls=cforest_unbiased(ntree=200, mtry=6))
+Predcfor <- predict(cfor, test, OOB=TRUE, type = "response")
+
+res=numeric(418)
+res=as.factor(as.numeric(predsvm)+as.numeric(Predcfor)-2)
+res=ifelse(res==2,1,0)
+mc<-table(res,cor$Survived)
+err<-1.0-(mc[1,1]+mc[2,2])/sum(mc)
+err 
+submit <- data.frame(PassengerId = test$PassengerId, Survived = res)
+write.csv(submit, file = "1somme.csv", row.names = FALSE)#res=ifelse(res==2,1,0)cad 2=>1 1,0=>0
+#0.1411483 kaggle => 0.82775
+
+
+```
+
+Resultat sur Kaggle => 0.79426
